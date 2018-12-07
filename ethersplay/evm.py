@@ -153,11 +153,61 @@ def mstore(il, addr, imm):
     return []
 
 
+def exp_inst(il, addr, imm):
+    base = il.pop(ADDR_SIZE)
+    exponent = il.pop(ADDR_SIZE)
+    il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(0), base))
+    il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(1), exponent))
+    if ('value' in dir(base) and 'value' in dir(exponent)
+            and base.value.is_constant and exponent.value.is_constant):
+        result = base.value.value ** exponent.value.value
+        il.append(il.push(ADDR_SIZE, il.const(ADDR_SIZE, result)))
+    else:
+        il.append(il.push(ADDR_SIZE, il.unimplemented()))
+    return []
+
+
 insn_il = {
+        'ADD': lambda il, addr, imm: il.push(
+            ADDR_SIZE,
+            il.add(ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE))
+        ),
+        'MUL': lambda il, addr, imm: il.push(
+            ADDR_SIZE,
+            il.mult(ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE))
+        ),
+        'SUB': lambda il, addr, imm: il.push(
+            ADDR_SIZE,
+            # yellopaper: s[0] - s[1]
+            il.sub(ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE))
+        ),
+        'DIV': lambda il, addr, imm: il.push(
+            ADDR_SIZE,
+            il.div_unsigned(ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE))
+        ),
+        'SDIV': lambda il, addr, imm: il.push(
+            ADDR_SIZE,
+            il.div_unsigned(ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE))
+        ),
+        # ... some missing insts
+        'EXP': exp_inst,
+        # ...
         'AND': lambda il, addr, imm: il.push(
             ADDR_SIZE, il.and_expr(
                 ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE)
             )
+        ),
+        'OR': lambda il, addr, imm: il.push(
+            ADDR_SIZE, il.xor_expr(ADDR_SIZE,
+                                   il.pop(ADDR_SIZE), il.pop(ADDR_SIZE))
+        ),
+        'XOR': lambda il, addr, imm: il.push(
+            ADDR_SIZE, il.xor_expr(ADDR_SIZE,
+                                   il.pop(ADDR_SIZE), il.pop(ADDR_SIZE))
+        ),
+        'NOT': lambda il, addr, imm: il.push(
+            ADDR_SIZE, il.not_expr(ADDR_SIZE,
+                                   il.pop(ADDR_SIZE))
         ),
         'EQ': lambda il, addr, imm: il.push(
             ADDR_SIZE, il.compare_equal(
@@ -168,6 +218,29 @@ insn_il = {
             ADDR_SIZE, il.compare_unsigned_less_than(
                 ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE)
             )
+        ),
+        'GT': lambda il, addr, imm: il.push(
+            ADDR_SIZE,
+            il.compare_unsigned_greater_than(ADDR_SIZE,
+                                             il.pop(ADDR_SIZE),
+                                             il.pop(ADDR_SIZE))
+        ),
+        'SLT': lambda il, addr, imm: il.push(
+            ADDR_SIZE,
+            # yellowpaper: s[0] < s[1]
+            # LLIL: compare_signed_less_than(size, a, b) => a < b
+            il.compare_signed_less_than(ADDR_SIZE,
+                                        # s[0] = a
+                                        il.pop(ADDR_SIZE),
+                                        # s[1] = b
+                                        il.pop(ADDR_SIZE))
+        ),
+        'SGT': lambda il, addr, imm: il.push(
+            ADDR_SIZE,
+            # yellowpaper: s[0] > s[1]
+            il.compare_signed_greater_than(ADDR_SIZE,
+                                           il.pop(ADDR_SIZE),
+                                           il.pop(ADDR_SIZE))
         ),
         'ISZERO': lambda il, addr, imm: il.push(
             ADDR_SIZE, il.compare_equal(
@@ -248,6 +321,14 @@ insn_il = {
         'INVALID': lambda il, addr, imm: il.no_ret(),
         'SUICIDE': lambda il, addr, imm: il.ret(il.pop(ADDR_SIZE)),
         'SELFDESTRUCT': lambda il, addr, imm: il.ret(il.pop(ADDR_SIZE)),
+        'PC': lambda il, addr, imm: il.push(
+                ADDR_SIZE,
+                il.const(ADDR_SIZE, addr)
+        ),
+        'SIGNEXTEND': lambda il, addr, imm: il.push(
+                ADDR_SIZE,
+                il.sign_extend(ADDR_SIZE,
+                               il.pop(ADDR_SIZE))),
 }
 
 
