@@ -5,6 +5,7 @@ from coverage import function_coverage_start
 from print_stack import function_printStack_start
 from stack_value_analysis import function_stack_value_analysis_start
 from evm import EVM, EVMView
+import annotator
 import lookup4byte
 
 
@@ -31,6 +32,11 @@ PluginCommand.register_for_function("EVM Print stack",
                                     "Print up to 10 values of the stack",
                                     function_printStack_start,
                                     is_valid=is_valid_evm)
+
+PluginCommand.register("EVM Annotate Instructions",
+                       "EVM Annotate Instructions",
+                       annotator.annotate_all,
+                       is_valid=is_valid_evm)
 
 PluginCommand.register(
         "EVM Rename functions (4byte.directory)",
