@@ -9,8 +9,9 @@ log_debug = log_info
 
 try:
     import requests
+    _requests_available = True
 except ImportError:
-    requests = None
+    _requests_available = False
 
 LOOKUP_4BYTE_URL = "https://www.4byte.directory/api/v1/signatures/"
 CACHE_4BYTE_PATH = os.path.expanduser("~/.4byte_cache")
@@ -42,18 +43,21 @@ def save_4byte_cache():
 def init_cache():
     if _4byte_cache is None:
         load_4byte_cache()
-        log_debug("atexit handler: Saving 4byte lookup cache in " + str(CACHE_4BYTE_PATH))
+        log_debug("atexit handler: Saving 4byte lookup cache in " +
+                  str(CACHE_4BYTE_PATH))
         atexit.register(save_4byte_cache)
 
 
-def lookup_hash(sig):
-    global _4byte_cache
-    assert _4byte_cache is not None
+def lookup_hash(sig, use_cache=True):
 
-    if sig in _4byte_cache and _4byte_cache[sig]:
-        return _4byte_cache[sig]
+    if use_cache:
+        global _4byte_cache
+        assert _4byte_cache is not None
 
-    if not requests:
+        if sig in _4byte_cache and _4byte_cache[sig]:
+            return _4byte_cache[sig]
+
+    if not _requests_available:
         log_error("couldn't import requests for fetching from 4byte.directory")
         return []
     try:
@@ -71,8 +75,7 @@ def lookup_hash(sig):
     except AssertionError:
         raise
     except Exception as e:
-        log_error("4byte lookup failed, reason ({}): {}"
-                  .format(type(e), e))
+        log_error("4byte lookup failed, reason ({}): {}".format(type(e), e))
         return []
 
     return []
@@ -89,14 +92,8 @@ def reset_symbol(bv, imm, hash_value, method_name):
     if sym is not None:
         bv.undefine_user_symbol(sym)
     bv.define_user_symbol(
-        bn.Symbol(
-            bn.SymbolType.ImportedFunctionSymbol,
-            imm,
-            '{} -> {}'.format(
-                hash_value, method_name
-            )
-        )
-    )
+        bn.Symbol(bn.SymbolType.ImportedFunctionSymbol, imm, '{} -> {}'.format(
+            hash_value, method_name)))
 
 
 def format_comment(sigs):
@@ -127,27 +124,35 @@ def rename_all_functions(bv):
                     if function.comment:
                         function.comment += "\n------\n"
                     function.comment += comment
-                log_info("found {} text sigs for hash {} renamed function to {}"
-                         .format(len(sigs), sig, function.name))
+                log_info(
+                    "found {} text sigs for hash {} renamed function to {}".
+                    format(len(sigs), sig, function.name))
             except AssertionError:
                 raise
             except Exception as e:
-                log_error("4byte lookup failed for function '{}' reason ({}): {}"
-                          .format(function.name, type(e), e))
+                log_error(
+                    "4byte lookup failed for function '{}' reason ({}): {}".
+                    format(function.name, type(e), e))
 
     save_4byte_cache()
     return 0
 
 
 def lookup_one_inst(bv, address):
+    """
+    Given an address to a PUSH instruction, take the immediate value from the
+    push instruction, mask it s.t. it's 4 byte, perform a lookup on
+    4byte.directory
+    """
     init_cache()
 
     disas = bv.get_disassembly(address).strip()
     try:
         inst = disas.split(" ")[0]
         if not inst.startswith("PUSH"):
-            log_error("Instruction '{}' at address {} is not a PUSH inst"
-                      .format(inst, address))
+            log_error(
+                "Instruction '{}' at address {} is not a PUSH inst".format(
+                    inst, address))
             return -1
         if "#" not in disas:
             log_error("invalid PUSH immediate value")
@@ -171,20 +176,46 @@ def lookup_one_inst(bv, address):
 
         reset_symbol(bv, imm, hash_value, method_name)
 
+        if not comment:
+            comment = "4byte signature: " + method_name
+
         if comment:
             for func in bv.get_functions_containing(address):
                 log_debug("in function {}".format(func))
                 c = func.get_comment_at(address)
-                if "sign" not in c:
+                if c:
                     log_debug("setting comment")
                     c = "{}\n---\n{}".format(c, comment)
                     func.set_comment_at(address, c)
+                else:
+                    func.set_comment_at(address, comment)
 
     except AssertionError:
         raise
     except Exception as e:
-        log_error("4byte lookup failed for inst {} at address '{}' reason ({}): {}"
-                  .format(disas, address, type(e), e))
+        log_error(
+            "4byte lookup failed for inst {} at address '{}' reason ({}): {}".
+            format(disas, address, type(e), e))
 
     save_4byte_cache()
     return 0
+
+
+def update_cache_bn(bv):
+    update_cache()
+
+
+def update_cache():
+    """
+    Perform lookup of all cached items, s.t., new signature collisions are
+    added to the cache. This should happen rather rarely so, it makes sense to
+    run this only manually sometimes.
+    """
+    load_4byte_cache()
+    for sig in _4byte_cache.keys():
+        lookup_hash(sig, use_cache=False)
+    save_4byte_cache()
+
+
+if __name__ == "__main__":
+    update_cache()
