@@ -172,6 +172,7 @@ def exp_inst(il, addr, imm):
         il.append(il.push(ADDR_SIZE, il.const(ADDR_SIZE, result)))
     else:
         il.append(il.push(ADDR_SIZE, il.unimplemented()))
+    il.append(il.nop())
     return []
 
 
@@ -195,7 +196,7 @@ insn_il = {
         ),
         'SDIV': lambda il, addr, imm: il.push(
             ADDR_SIZE,
-            il.div_unsigned(ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE))
+            il.div_signed(ADDR_SIZE, il.pop(ADDR_SIZE), il.pop(ADDR_SIZE))
         ),
         # ... some missing insts
         'EXP': exp_inst,

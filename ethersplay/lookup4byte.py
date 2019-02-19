@@ -3,7 +3,7 @@ import json
 import atexit
 
 import binaryninja as bn
-from binaryninja import log_error, log_info
+from binaryninja import (log_error, log_warn, log_info, BackgroundTaskThread)
 
 log_debug = log_info
 
@@ -24,7 +24,7 @@ def load_4byte_cache():
     global _4byte_cache
     log_debug("Loading 4byte lookup cache from: " + str(CACHE_4BYTE_PATH))
     if os.path.exists(CACHE_4BYTE_FILE):
-        with open(CACHE_4BYTE_FILE) as f:
+        with open(CACHE_4BYTE_FILE, "r") as f:
             _4byte_cache = json.load(f)
             log_debug("4byte cache load success!")
     else:
@@ -51,11 +51,14 @@ def init_cache():
 def lookup_hash(sig, use_cache=True):
 
     if use_cache:
+        init_cache()
         global _4byte_cache
-        assert _4byte_cache is not None
 
-        if sig in _4byte_cache and _4byte_cache[sig]:
-            return _4byte_cache[sig]
+        # if sig in _4byte_cache and _4byte_cache[sig]:
+        #     return _4byte_cache[sig]
+        tsig = _4byte_cache.get(sig, [])
+        if tsig:
+            return tsig
 
     if not _requests_available:
         log_error("couldn't import requests for fetching from 4byte.directory")
@@ -70,7 +73,8 @@ def lookup_hash(sig, use_cache=True):
             _4byte_cache[sig] = sig_collisions
             return sig_collisions
         else:
-            log_debug("4.byte directory didn't yield any results")
+            log_warn("4.byte directory didn't yield any results for '{}'"
+                     .format(sig))
             return []
     except AssertionError:
         raise
@@ -79,21 +83,6 @@ def lookup_hash(sig, use_cache=True):
         return []
 
     return []
-
-
-def reset_symbol(bv, imm, hash_value, method_name):
-    # we don't create symbols inside of actual address space. This would
-    # interfere with actual functions... e.g., the hash 0x00000000 would result
-    # in the dispatcher being renamed.
-    if imm < len(bv):
-        return
-
-    sym = bv.get_symbol_at(imm)
-    if sym is not None:
-        bv.undefine_user_symbol(sym)
-    bv.define_user_symbol(
-        bn.Symbol(bn.SymbolType.ImportedFunctionSymbol, imm, '{} -> {}'.format(
-            hash_value, method_name)))
 
 
 def format_comment(sigs):
@@ -109,18 +98,19 @@ def rename_all_functions(bv):
     init_cache()
 
     for function in bv.functions:
-        if function.name.startswith("#"):
+        if function.name.startswith("0x"):
             log_info("performing 4byte lookup for '{}'".format(function.name))
             try:
-                sig = "0x" + function.name[1:].strip()
+                # sig = "0x" + function.name[1:].strip()
+                sig = function.name
                 sigs = lookup_hash(sig)
                 if len(sigs) >= 1:
                     new_name, comment = format_comment(sigs)
                     function.name = new_name
 
-                    imm = int(sig, 16)
-                    hash_value = "#{:0=8x}".format(imm)
-                    reset_symbol(bv, imm, hash_value, new_name)
+                    # imm = int(sig, 16)
+                    # hash_value = "#{:0=8x}".format(imm)
+                    # reset_symbol(bv, imm, hash_value, new_name)
                     if function.comment:
                         function.comment += "\n------\n"
                     function.comment += comment
@@ -165,7 +155,7 @@ def lookup_one_inst(bv, address):
         imm = imm & 0xffffffff
 
         sig = "0x{:0=8x}".format(imm)
-        hash_value = "#{:0=8x}".format(imm)
+        # hash_value = "#{:0=8x}".format(imm)
 
         sigs = lookup_hash(sig)
         log_debug("found {} sigs: {}".format(len(sigs), sigs))
@@ -174,7 +164,7 @@ def lookup_one_inst(bv, address):
 
         method_name, comment = format_comment(sigs)
 
-        reset_symbol(bv, imm, hash_value, method_name)
+        # reset_symbol(bv, imm, hash_value, method_name)
 
         if not comment:
             comment = "4byte signature: " + method_name
@@ -201,20 +191,28 @@ def lookup_one_inst(bv, address):
     return 0
 
 
-def update_cache_bn(bv):
-    update_cache()
-
-
 def update_cache():
     """
     Perform lookup of all cached items, s.t., new signature collisions are
     added to the cache. This should happen rather rarely so, it makes sense to
     run this only manually sometimes.
     """
-    load_4byte_cache()
+    init_cache()
     for sig in _4byte_cache.keys():
         lookup_hash(sig, use_cache=False)
     save_4byte_cache()
+
+
+class CacheUpdateThread(BackgroundTaskThread):
+    def run(self):
+        log_debug("inside update thread: starting lookups")
+        update_cache()
+
+
+def update_cache_bn(bv):
+    log_debug("running update thread")
+    x = CacheUpdateThread()
+    x.start()
 
 
 if __name__ == "__main__":
