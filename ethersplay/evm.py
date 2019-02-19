@@ -1,18 +1,24 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from binaryninja import (LLIL_TEMP, Architecture, BinaryView, BranchType,
-                         Endianness, InstructionInfo, InstructionTextToken,
-                         InstructionTextTokenType, LowLevelILLabel,
-                         LowLevelILOperation, RegisterInfo, SegmentFlag,
-                         Symbol, SymbolType)
+try:
+    from builtins import range
+except ImportError:
+    pass
 
-from .analysis import (DispatcherCallback, DynamicJumpCallback,
-                       InvalidJumpCallback)
-from .common import ADDR_SIZE, EVM_HEADER
-from .evmasm import EVMAsm
+from interval3 import Interval, IntervalSet
 
-from interval import Interval, IntervalSet
+from binaryninja import (LLIL_TEMP, Architecture, BinaryDataNotification,
+                         BinaryView, BranchType, Endianness, InstructionInfo,
+                         InstructionTextToken, InstructionTextTokenType, Function,
+                         LowLevelILLabel, LowLevelILOperation, RegisterInfo, log_info,
+                         SegmentFlag, Symbol, SymbolType, log_debug, Settings, SettingsScope)
+from binaryninja.function import _FunctionAssociatedDataStore
+from pyevmasm import assemble, disassemble_one
+
+from .analysis import VsaNotification
+from .common import ADDR_SIZE
+from evm_cfg_builder.cfg import CFG
 
 
 def jumpi(il, addr, imm):
@@ -27,7 +33,9 @@ def jumpi(il, addr, imm):
             push.operation == LowLevelILOperation.LLIL_PUSH and
             push.src.operation == LowLevelILOperation.LLIL_CONST):
         dest = il.const(ADDR_SIZE, push.src.constant)
-        il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(0), il.pop(ADDR_SIZE)))
+        il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(1), il.pop(ADDR_SIZE)))
+    else:
+        il.append(dest)
 
     t = LowLevelILLabel()
     f = il.get_label_for_address(Architecture['EVM'], addr+1)
@@ -40,13 +48,13 @@ def jumpi(il, addr, imm):
     # We need to use a temporary register here. The il.if_expr() helper
     # function makes a tree and evaluates the condition's il.pop()
     # first, but dest needs to be first.
-    il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(addr), dest))
+    #il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(addr), dest))
 
     il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(0), il.pop(ADDR_SIZE)))
     il.append(il.if_expr(il.reg(ADDR_SIZE, LLIL_TEMP(0)), t, f))
 
     il.mark_label(t)
-    il.append(il.jump(il.reg(ADDR_SIZE, LLIL_TEMP(addr))))
+    il.append(il.jump(il.unimplemented()))  # il.reg(ADDR_SIZE, LLIL_TEMP(1))))
 
     if must_mark:
         il.mark_label(f)
@@ -354,7 +362,7 @@ class EVM(Architecture):
     stack_pointer = "sp"
 
     def get_instruction_info(self, data, addr):
-        instruction = EVMAsm.disassemble_one(data, addr)
+        instruction = disassemble_one(data, addr)
 
         result = InstructionInfo()
         result.length = instruction.size
@@ -370,7 +378,7 @@ class EVM(Architecture):
         return result
 
     def get_instruction_text(self, data, addr):
-        instruction = EVMAsm.disassemble_one(data, addr)
+        instruction = disassemble_one(data, addr)
 
         tokens = []
         tokens.append(
@@ -396,17 +404,17 @@ class EVM(Architecture):
         return tokens, instruction.size
 
     def get_instruction_low_level_il(self, data, addr, il):
-        instruction = EVMAsm.disassemble_one(data, addr)
+        instruction = disassemble_one(data, addr)
 
         ill = insn_il.get(instruction.name, None)
         if ill is None:
 
-            for i in xrange(instruction.pops):
+            for i in range(instruction.pops):
                 il.append(
                     il.set_reg(ADDR_SIZE, LLIL_TEMP(i), il.pop(ADDR_SIZE))
                 )
 
-            for i in xrange(instruction.pushes):
+            for i in range(instruction.pushes):
                 il.append(il.push(ADDR_SIZE, il.unimplemented()))
 
             il.append(il.nop())
@@ -424,9 +432,9 @@ class EVM(Architecture):
 
     def assemble(self, code, addr=0):
         try:
-            return EVMAsm.assemble(code, addr), ''
+            return assemble(code, addr), ''
         except Exception as e:
-            return None, e.message
+            return None, str(e)
 
 
 class EVMView(BinaryView):
@@ -439,11 +447,11 @@ class EVMView(BinaryView):
 
     def find_swarm_hashes(self, data):
         rv = []
-        offset = data.find('\xa1ebzzr0')
+        offset = data.find(b'\xa1ebzzr0')
         while offset != -1:
-            print "Adding r-- segment at: {:#x}".format(offset)
+            log_debug("Adding r-- segment at: {:#x}".format(offset))
             rv.append((offset, 43))
-            offset = data[offset+1:].find('\xa1ebzzr0')
+            offset = data[offset+1:].find(b'\xa1ebzzr0')
 
         return rv
 
@@ -451,64 +459,77 @@ class EVMView(BinaryView):
     def init(self):
         self.arch = Architecture['EVM']
         self.platform = Architecture['EVM'].standalone_platform
-        self.add_entry_point(0)
+        self.max_function_size_for_analysis = 0
 
         file_size = len(self.raw)
 
         # Find swarm hashes and make them data
-        bytes = self.raw.read(0, file_size)
+        evm_bytes = self.raw.read(0, file_size)
 
         # code is everything that isn't a swarm hash
         code = IntervalSet([Interval(0, file_size)])
 
-        swarm_hashes = self.find_swarm_hashes(bytes)
+        swarm_hashes = self.find_swarm_hashes(evm_bytes)
         for start, sz in swarm_hashes:
-            self.add_auto_segment(start - len(EVM_HEADER), sz, start, sz, SegmentFlag.SegmentContainsData | SegmentFlag.SegmentDenyExecute | SegmentFlag.SegmentReadable | SegmentFlag.SegmentDenyWrite)
+            self.add_auto_segment(
+                start, sz,
+                start, sz,
+                (
+                    SegmentFlag.SegmentContainsData |
+                    SegmentFlag.SegmentDenyExecute |
+                    SegmentFlag.SegmentReadable |
+                    SegmentFlag.SegmentDenyWrite
+                )
+            )
 
             code -= IntervalSet([Interval(start, start + sz)])
 
-        print "Code Segments: {}".format(code)
-
-
         for interval in code:
+            if isinstance(interval, int):
+                continue
             self.add_auto_segment(
-                interval.lower_bound, interval.upper_bound - len(EVM_HEADER),
-                len(EVM_HEADER), interval.upper_bound,
-                (SegmentFlag.SegmentReadable |
-                    SegmentFlag.SegmentExecutable)
+                interval.lower_bound, interval.upper_bound,
+                interval.lower_bound, interval.upper_bound,
+                (
+                    SegmentFlag.SegmentReadable |
+                    SegmentFlag.SegmentExecutable
+                )
             )
 
-        self.define_auto_symbol(
-            Symbol(
-                SymbolType.FunctionSymbol,
-                0,
-                '_dispatcher'
+        cfg = CFG(evm_bytes)
+        Function.set_default_session_data('cfg', cfg)
+
+        self.register_notification(VsaNotification())
+
+        self.add_entry_point(0)
+
+        for function in cfg.functions:
+            function_start = (function._start_addr + 1
+                              if function._start_addr != 0 else 0)
+
+            self.define_auto_symbol(
+                Symbol(
+                    SymbolType.FunctionSymbol,
+                    function_start,
+                    function.name
+                )
             )
-        )
 
-        invalidJumpCallbackNotification = InvalidJumpCallback()
-        self.register_notification(invalidJumpCallbackNotification)
-
-        dispatcherCallbackNotification = DispatcherCallback()
-        self.register_notification(dispatcherCallbackNotification)
-
-        dynamicJumpCallbackNotification = DynamicJumpCallback()
-        self.register_notification(dynamicJumpCallbackNotification)
+            self.add_function(function_start)
 
         # disable linear sweep
-        self.store_metadata(
-            "ephemeral",
-            {"binaryninja.analysis.autorunLinearSweep": False}
+        Settings().set_bool(
+            'analysis.linearSweep.autorun',
+            False,
+            view=self,
+            scope=SettingsScope.SettingsContextScope
         )
 
         return True
 
     @staticmethod
     def is_valid_for_data(data):
-        file_header = data.read(0, 3)
-        if file_header == EVM_HEADER:
-            return True
-        return False
+        return data.file.original_filename.endswith('.evm')
 
     def is_executable(self):
         return True
