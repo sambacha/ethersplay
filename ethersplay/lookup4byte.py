@@ -191,6 +191,13 @@ def lookup_one_inst(bv, address):
     return 0
 
 
+def lookup_all_push4(view, function):
+    for inst, address in function.instructions:
+        inststr = str(inst[0]).strip()
+        if inststr.upper().strip() == "PUSH4":
+            lookup_one_inst(view, address)
+
+
 def update_cache():
     """
     Perform lookup of all cached items, s.t., new signature collisions are
