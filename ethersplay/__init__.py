@@ -6,6 +6,7 @@ from .flowgraph import render_flowgraphs
 from .annotator import annotate_all
 from .lookup4byte import (rename_all_functions, lookup_one_inst,
                           update_cache_bn, lookup_all_push4)
+from .misc import dump_codecopy_data
 
 def is_valid_evm(view, function=None):
     return view.arch == Architecture['EVM']
@@ -53,11 +54,19 @@ PluginCommand.register_for_function(
     "Perform lookup of one hash signature on 4byte.directory",
     lookup_all_push4,
     is_valid=is_valid_evm)
+
 PluginCommand.register_for_address(
     "Ethersplay\\Lookup 4byte hash (4byte.directory)",
     "Perform lookup of one hash signature on 4byte.directory",
     lookup_one_inst,
     is_valid=is_valid_evm)
+
+PluginCommand.register_for_address(
+    "Ethersplay-contrib\\Dump CODECOPY to file",
+    "Dump the result of a codecopy to a file",
+    dump_codecopy_data,
+    is_valid=is_valid_evm)
+
 
 EVM.register()
 EVMView.register()
