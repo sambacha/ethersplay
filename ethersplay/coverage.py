@@ -4,16 +4,16 @@ from binaryninja import log_info
 
 blue = HighlightStandardColor.BlueHighlightColor
 
-class GraphColorer(object):
 
+class GraphColorer(object):
     def __init__(self, view):
         self.bb_seen = []
         self.view = view
 
     def color(self, visited):
-        with open(visited,'r') as f:
+        with open(visited, "r") as f:
             for line in f:
-                index = line.find(':') + 1
+                index = line.find(":") + 1
                 addr = line[index:].split()[0]
                 log_info(addr)
                 try:
@@ -29,10 +29,8 @@ class GraphColorer(object):
             func.set_user_instr_highlight(addr, blue)
 
 
-
 def function_coverage_start(view):
-    visited = get_open_filename_input('visited.txt or *.trace')
+    visited = get_open_filename_input("visited.txt or *.trace")
     if visited:
         colorer = GraphColorer(view)
         colorer.color(visited)
-

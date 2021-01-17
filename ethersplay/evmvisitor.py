@@ -1,12 +1,13 @@
 from bisect import bisect_left
 from binaryninja import log_debug
 
+
 class BNILVisitor(object):
     def __init__(self, **kw):
         super(BNILVisitor, self).__init__()
 
     def visit(self, expression):
-        method_name = 'visit_{}'.format(expression.operation.name)
+        method_name = "visit_{}".format(expression.operation.name)
         if hasattr(self, method_name):
             value = getattr(self, method_name)(expression)
         else:
@@ -20,7 +21,7 @@ class EVMVisitor(BNILVisitor):
         self.function = None
         self.il_function = None
         self.bb = None
-        self.il_bb_lookup = kw['lookup']
+        self.il_bb_lookup = kw["lookup"]
 
     def visit_MLIL_IF(self, expression):
         self.il_function = expression.function
@@ -57,9 +58,7 @@ class EVMVisitor(BNILVisitor):
         expr_defs = self.il_function.get_var_definitions(expression.src.var)
 
         expr_defs = expr_defs[
-            bisect_left(
-                expr_defs, self.bb.start
-            ):bisect_left(
+            bisect_left(expr_defs, self.bb.start) : bisect_left(
                 expr_defs, expression.non_ssa_form.instr_index
             )
         ]

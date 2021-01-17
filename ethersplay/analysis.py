@@ -3,11 +3,21 @@ import threading
 
 from pyevmasm import disassemble_all
 
-from binaryninja import (BackgroundTaskThread, BinaryDataNotification,
-                         BranchType, IntegerDisplayType,
-                         MediumLevelILOperation, SegmentFlag, Settings,
-                         SettingsScope, SSAVariable, Symbol, SymbolType,
-                         log_debug, log_info)
+from binaryninja import (
+    BackgroundTaskThread,
+    BinaryDataNotification,
+    BranchType,
+    IntegerDisplayType,
+    MediumLevelILOperation,
+    SegmentFlag,
+    Settings,
+    SettingsScope,
+    SSAVariable,
+    Symbol,
+    SymbolType,
+    log_debug,
+    log_info,
+)
 from evm_cfg_builder.cfg import CFG
 
 from .evmvisitor import EVMVisitor
@@ -15,18 +25,13 @@ from .evmvisitor import EVMVisitor
 
 def run_vsa(thread, view, function):
     cfg = function.session_data.cfg
-    cfg_function = cfg.get_function_at(
-        function.start - 1 if function.start != 0 else 0
-    )
+    cfg_function = cfg.get_function_at(function.start - 1 if function.start != 0 else 0)
     hash_id = cfg_function.hash_id
 
-    thread.task.progress = '[VSA] Analyzing...'
+    thread.task.progress = "[VSA] Analyzing..."
 
     to_process = [
-        cfg.get_basic_block_at
-        (
-            function.start - 1 if function.start != 0 else 0
-        )
+        cfg.get_basic_block_at(function.start - 1 if function.start != 0 else 0)
     ]
 
     seen = set()
@@ -34,7 +39,7 @@ def run_vsa(thread, view, function):
     i = 3
 
     while to_process:
-        thread.task.progress = '[VSA] Processing Basic Blocks{}'.format('.'*i)
+        thread.task.progress = "[VSA] Processing Basic Blocks{}".format("." * i)
         i += (i + 1) % 4
         basic_block = to_process.pop()
         seen.add(basic_block)
@@ -43,30 +48,34 @@ def run_vsa(thread, view, function):
 
         if outgoing_edges is not None:
             for outgoing_edge in outgoing_edges:
-                if (view.get_function_at(outgoing_edge.start.pc + 1) is None and
-                        outgoing_edge not in seen):
+                if (
+                    view.get_function_at(outgoing_edge.start.pc + 1) is None
+                    and outgoing_edge not in seen
+                ):
                     to_process.append(outgoing_edge)
 
                 dest_branches = function.get_indirect_branches_at(end)
 
-                current_branches = {
-                    dest.dest_addr for dest in dest_branches
-                }
+                current_branches = {dest.dest_addr for dest in dest_branches}
 
                 if outgoing_edge.start.pc not in current_branches:
                     current_branches.add(outgoing_edge.start.pc)
                     function.set_user_indirect_branches(
                         end,
                         [
-                            (view.arch, dest) for dest in current_branches
-                            if (not basic_block.ends_with_jumpi or
-                                outgoing_edge.start.pc != end + 1)
-                        ]
+                            (view.arch, dest)
+                            for dest in current_branches
+                            if (
+                                not basic_block.ends_with_jumpi
+                                or outgoing_edge.start.pc != end + 1
+                            )
+                        ],
                     )
 
     if function.start == 0:
         max_function_size, _ = Settings().get_integer_with_scope(
-            'analysis.maxFunctionSize', scope=SettingsScope.SettingsDefaultScope)
+            "analysis.maxFunctionSize", scope=SettingsScope.SettingsDefaultScope
+        )
         if max_function_size:
             view.max_function_size_for_analysis = max_function_size
         else:
@@ -86,5 +95,6 @@ class VsaTaskThread(BackgroundTaskThread):
 class VsaNotification(BinaryDataNotification):
     def function_added(self, view, function):
         vsa_task = VsaTaskThread(
-            'Running VSA for {}'.format(function.name), view, function)
+            "Running VSA for {}".format(function.name), view, function
+        )
         vsa_task.start()
