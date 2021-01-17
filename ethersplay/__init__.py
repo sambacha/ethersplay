@@ -4,9 +4,14 @@ from .coverage import function_coverage_start
 from .evm import EVM, EVMView
 from .flowgraph import render_flowgraphs
 from .annotator import annotate_all
-from .lookup4byte import (rename_all_functions, lookup_one_inst,
-                          update_cache_bn, lookup_all_push4)
+from .lookup4byte import (
+    rename_all_functions,
+    lookup_one_inst,
+    update_cache_bn,
+    lookup_all_push4,
+)
 from .misc import dump_codecopy_data
+
 
 def is_valid_evm(view, function=None):
     return view.arch == Architecture["EVM"]

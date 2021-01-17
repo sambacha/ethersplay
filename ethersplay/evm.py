@@ -182,8 +182,12 @@ def exp_inst(il, addr, imm):
     exponent = il.pop(ADDR_SIZE)
     il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(0), base))
     il.append(il.set_reg(ADDR_SIZE, LLIL_TEMP(1), exponent))
-    if ('value' in dir(base) and 'value' in dir(exponent)
-            and base.value.is_constant and exponent.value.is_constant):
+    if (
+        "value" in dir(base)
+        and "value" in dir(exponent)
+        and base.value.is_constant
+        and exponent.value.is_constant
+    ):
         result = base.value.value ** exponent.value.value
         il.append(il.push(ADDR_SIZE, il.const(ADDR_SIZE, result)))
     else:
@@ -397,7 +401,6 @@ class EVMView(BinaryView):
             offset = data[offset + 1 :].find(b"\xa1ebzzr0")
 
         return rv
-
 
     def init(self):
         self.arch = Architecture["EVM"]

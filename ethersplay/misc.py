@@ -11,13 +11,15 @@ def dump_codecopy_data(bv, address):
     if not inst.startswith("CODECOPY"):
         log_error(
             "Instruction '{}' at address {} is not a CODECOPY inst".format(
-                inst, address))
+                inst, address
+            )
+        )
         return None
 
     for function in bv.get_functions_containing(address):
-        sp = function.get_reg_value_at(address, 'sp')
+        sp = function.get_reg_value_at(address, "sp")
         # sp should be a offset
-        if hasattr(sp, 'offset'):
+        if hasattr(sp, "offset"):
             spoff = sp.offset
         else:
             log_error(
@@ -32,18 +34,22 @@ def dump_codecopy_data(bv, address):
 
         # retrieve actual values
         code_offset = function.get_stack_contents_at(
-            address, spoff + ADDR_SZ * code_offset_offset, ADDR_SZ)
+            address, spoff + ADDR_SZ * code_offset_offset, ADDR_SZ
+        )
         length = function.get_stack_contents_at(
-            address, spoff + ADDR_SZ * len_offset, ADDR_SZ)
+            address, spoff + ADDR_SZ * len_offset, ADDR_SZ
+        )
 
         # check if the values
-        if not hasattr(code_offset, 'value'):
-            log_error("can't determine code_offset stack parameter (" +
-                      repr(code_offset) + ")")
+        if not hasattr(code_offset, "value"):
+            log_error(
+                "can't determine code_offset stack parameter ("
+                + repr(code_offset)
+                + ")"
+            )
             continue
-        if not hasattr(length, 'value'):
-            log_error("can't determine len stack parameter (" + repr(length) +
-                      ")")
+        if not hasattr(length, "value"):
+            log_error("can't determine len stack parameter (" + repr(length) + ")")
             continue
 
         c, l = code_offset.value, length.value
@@ -55,8 +61,8 @@ def dump_codecopy_data(bv, address):
         default_filename = "{}_codecopy_{}_{}.raw".format(base_name, c, l)
 
         selected_filename = get_save_filename_input(
-            "Select Filename?", "raw",
-            os.path.join(dir_name, default_filename)).decode("utf-8")
+            "Select Filename?", "raw", os.path.join(dir_name, default_filename)
+        ).decode("utf-8")
 
         if not selected_filename:
             selected_filename = default_filename

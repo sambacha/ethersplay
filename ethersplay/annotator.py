@@ -7,18 +7,17 @@ from .common import ADDR_SIZE as ADDR_SZ
 def get_annotation_for_stack_offset(function, address, offset=0):
     """offset is in terms of EVM stack slots"""
 
-    sp = function.get_reg_value_at(address, 'sp')
+    sp = function.get_reg_value_at(address, "sp")
     # sp should be a offset
-    if hasattr(sp, 'offset'):
+    if hasattr(sp, "offset"):
         spoff = sp.offset
     else:
         # binary ninja couldn't track the sp offset. bail out early
         return "<??? sp = " + str(sp) + ">"
 
-    val = function.get_stack_contents_at(address, spoff + ADDR_SZ * offset,
-                                         ADDR_SZ)
-    if hasattr(val, 'value'):
-        if val.value > 2**10:
+    val = function.get_stack_contents_at(address, spoff + ADDR_SZ * offset, ADDR_SZ)
+    if hasattr(val, "value"):
+        if val.value > 2 ** 10:
             return hex(val.value)
         else:
             return str(val.value)
@@ -27,30 +26,56 @@ def get_annotation_for_stack_offset(function, address, offset=0):
 
 
 _ANNOTATIONS = {
-    "CALLDATALOAD": ('input_offset', ),
-    "CALLDATACOPY": ('mem_offset', 'input_offset', 'len'),
-    'CODECOPY': ('mem_offset', 'code_offset', 'len'),
-    'EXTCODECOPY': ('addr', 'mem_offset', 'code_offset', 'len'),
-    "MSTORE": ('address', 'value'),
-    "SSTORE": ('address', 'value'),
-    "SLOAD": ('address', ),
-    "MLOAD": ('address', ),
-    "CREATE": ('value', 'mem_offset', 'mem_size'),
-    "CALL": ('gas', 'address', 'value', 'inp_offset', 'inp_size', 'ret_offset',
-             'ret_size'),
-    "CALLCODE": ('gas', 'address', 'value', 'inp_offset', 'inp_size',
-                 'ret_offset', 'ret_size'),
-    "DELEGATECALL": ('gas', 'address', 'inp_offset', 'inp_size', 'ret_offset',
-                     'ret_size'),
-    "STATICCALL": ('gas', 'address', 'inp_offset', 'inp_size', 'ret_offset',
-                   'ret_size'),
-    "RETURN": ('mem_offset', 'mem_size'),
-    "REVERT": ('mem_offset', 'mem_size'),
-    "SUICIDE": ('address', ),
-    "SHA3": ('offset', 'size'),
-    "ADD": ('op1', 'op2'),
-    "AND": ('op1', 'op2'),
-    "SIGNEXTEND": ('v',),
+    "CALLDATALOAD": ("input_offset",),
+    "CALLDATACOPY": ("mem_offset", "input_offset", "len"),
+    "CODECOPY": ("mem_offset", "code_offset", "len"),
+    "EXTCODECOPY": ("addr", "mem_offset", "code_offset", "len"),
+    "MSTORE": ("address", "value"),
+    "SSTORE": ("address", "value"),
+    "SLOAD": ("address",),
+    "MLOAD": ("address",),
+    "CREATE": ("value", "mem_offset", "mem_size"),
+    "CALL": (
+        "gas",
+        "address",
+        "value",
+        "inp_offset",
+        "inp_size",
+        "ret_offset",
+        "ret_size",
+    ),
+    "CALLCODE": (
+        "gas",
+        "address",
+        "value",
+        "inp_offset",
+        "inp_size",
+        "ret_offset",
+        "ret_size",
+    ),
+    "DELEGATECALL": (
+        "gas",
+        "address",
+        "inp_offset",
+        "inp_size",
+        "ret_offset",
+        "ret_size",
+    ),
+    "STATICCALL": (
+        "gas",
+        "address",
+        "inp_offset",
+        "inp_size",
+        "ret_offset",
+        "ret_size",
+    ),
+    "RETURN": ("mem_offset", "mem_size"),
+    "REVERT": ("mem_offset", "mem_size"),
+    "SUICIDE": ("address",),
+    "SHA3": ("offset", "size"),
+    "ADD": ("op1", "op2"),
+    "AND": ("op1", "op2"),
+    "SIGNEXTEND": ("v",),
 }
 
 
@@ -75,9 +100,10 @@ def swap2off(inststr):
 
 
 def annotate(view, function):
-    if view.arch.name != 'EVM':
-        log_error("This plugin works only for EVM bytecode (not for " +
-                  view.arch.name + ")")
+    if view.arch.name != "EVM":
+        log_error(
+            "This plugin works only for EVM bytecode (not for " + view.arch.name + ")"
+        )
         return -1
 
     for inst, address in function.instructions:
@@ -86,23 +112,24 @@ def annotate(view, function):
         if inststr in _ANNOTATIONS:
             for stack_offset, annotation in enumerate(_ANNOTATIONS[inststr]):
                 if annotation:
-                    comment += (", {} = {}"
-                                .format(annotation,
-                                        get_annotation_for_stack_offset(
-                                            function, address, stack_offset)))
+                    comment += ", {} = {}".format(
+                        annotation,
+                        get_annotation_for_stack_offset(
+                            function, address, stack_offset
+                        ),
+                    )
         if is_dup(inststr):
             stack_offset = dup2off(inststr)
-            comment = (", push {}".format(
-                get_annotation_for_stack_offset(function, address,
-                                                stack_offset)))
+            comment = ", push {}".format(
+                get_annotation_for_stack_offset(function, address, stack_offset)
+            )
         if is_swap(inststr):
             stack_offset = swap2off(inststr)
-            comment = (", swap(s[0] = {}, s[{}] = {})".format(
+            comment = ", swap(s[0] = {}, s[{}] = {})".format(
                 get_annotation_for_stack_offset(function, address, 0),
                 stack_offset,
-                get_annotation_for_stack_offset(function, address,
-                                                stack_offset),
-            ))
+                get_annotation_for_stack_offset(function, address, stack_offset),
+            )
         if comment:
             # skip initial ', '
             comment = comment[2:]
@@ -112,7 +139,7 @@ def annotate(view, function):
 
 
 def annotate_all(view):
-    if view.arch.name != 'EVM':
+    if view.arch.name != "EVM":
         log_error("This plugin works only for EVM bytecode")
         return -1
 

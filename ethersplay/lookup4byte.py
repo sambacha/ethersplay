@@ -3,12 +3,13 @@ import json
 import atexit
 
 import binaryninja as bn
-from binaryninja import (log_error, log_warn, log_info, BackgroundTaskThread)
+from binaryninja import log_error, log_warn, log_info, BackgroundTaskThread
 
 log_debug = log_info
 
 try:
     import requests
+
     _requests_available = True
 except ImportError:
     _requests_available = False
@@ -43,8 +44,9 @@ def save_4byte_cache():
 def init_cache():
     if _4byte_cache is None:
         load_4byte_cache()
-        log_debug("atexit handler: Saving 4byte lookup cache in " +
-                  str(CACHE_4BYTE_PATH))
+        log_debug(
+            "atexit handler: Saving 4byte lookup cache in " + str(CACHE_4BYTE_PATH)
+        )
         atexit.register(save_4byte_cache)
 
 
@@ -66,15 +68,14 @@ def lookup_hash(sig, use_cache=True):
     try:
         res = requests.get(LOOKUP_4BYTE_URL, params={"hex_signature": sig})
         rj = res.json()
-        results = rj['results']
+        results = rj["results"]
 
         if len(results) >= 1:
-            sig_collisions = [r['text_signature'] for r in results]
+            sig_collisions = [r["text_signature"] for r in results]
             _4byte_cache[sig] = sig_collisions
             return sig_collisions
         else:
-            log_warn("4.byte directory didn't yield any results for '{}'"
-                     .format(sig))
+            log_warn("4.byte directory didn't yield any results for '{}'".format(sig))
             return []
     except AssertionError:
         raise
@@ -90,7 +91,7 @@ def format_comment(sigs):
     text_sig = sigs[0]
     comment = ""
     if len(sigs) > 1:
-        comment = ("signatures with colliding hash:\n" + "\n".join(sigs))
+        comment = "signatures with colliding hash:\n" + "\n".join(sigs)
     return text_sig, comment
 
 
@@ -115,14 +116,18 @@ def rename_all_functions(bv):
                         function.comment += "\n------\n"
                     function.comment += comment
                 log_info(
-                    "found {} text sigs for hash {} renamed function to {}".
-                    format(len(sigs), sig, function.name))
+                    "found {} text sigs for hash {} renamed function to {}".format(
+                        len(sigs), sig, function.name
+                    )
+                )
             except AssertionError:
                 raise
             except Exception as e:
                 log_error(
-                    "4byte lookup failed for function '{}' reason ({}): {}".
-                    format(function.name, type(e), e))
+                    "4byte lookup failed for function '{}' reason ({}): {}".format(
+                        function.name, type(e), e
+                    )
+                )
 
     save_4byte_cache()
     return 0
@@ -142,7 +147,9 @@ def lookup_one_inst(bv, address):
         if not inst.startswith("PUSH"):
             log_error(
                 "Instruction '{}' at address {} is not a PUSH inst".format(
-                    inst, address))
+                    inst, address
+                )
+            )
             return -1
         if "#" not in disas:
             log_error("invalid PUSH immediate value")
@@ -152,7 +159,7 @@ def lookup_one_inst(bv, address):
         log_info("EVM: 4byte lookup of hash: {}".format(imm))
 
         # we mask the top bytes
-        imm = imm & 0xffffffff
+        imm = imm & 0xFFFFFFFF
 
         sig = "0x{:0=8x}".format(imm)
         # hash_value = "#{:0=8x}".format(imm)
@@ -184,8 +191,10 @@ def lookup_one_inst(bv, address):
         raise
     except Exception as e:
         log_error(
-            "4byte lookup failed for inst {} at address '{}' reason ({}): {}".
-            format(disas, address, type(e), e))
+            "4byte lookup failed for inst {} at address '{}' reason ({}): {}".format(
+                disas, address, type(e), e
+            )
+        )
 
     save_4byte_cache()
     return 0
